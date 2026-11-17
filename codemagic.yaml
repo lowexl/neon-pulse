@@ -1,0 +1,31 @@
+# NEON PULSE — one provisioning profile, no widget extension.
+# Replace bundle_identifier with your .mobileprovision App ID (without Team ID prefix).
+# Choose distribution_type matching your provisioning profile.
+workflows:
+  neonpulse-ipa:
+    name: NEON PULSE — one profile signed IPA
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    environment:
+      xcode: latest
+      ios_signing:
+        distribution_type: ad_hoc
+        bundle_identifier: com.example.neonpulse
+    scripts:
+      - name: Install XcodeGen
+        script: |
+          if ! command -v xcodegen >/dev/null 2>&1; then brew install xcodegen; fi
+      - name: Configure app Bundle ID
+        script: python3 Scripts/configure-single-profile.py
+      - name: Generate Xcode project
+        script: xcodegen generate
+      - name: Match uploaded signing profile
+        script: xcode-project use-profiles --project NeonPulse.xcodeproj
+      - name: Build signed IPA
+        script: |
+          xcode-project build-ipa \
+            --project "$CM_BUILD_DIR/NeonPulse.xcodeproj" \
+            --scheme NeonPulse
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
