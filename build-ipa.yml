@@ -1,0 +1,63 @@
+name: Собрать NEON PULSE IPA
+
+on:
+  workflow_dispatch:
+
+jobs:
+  ios:
+    runs-on: macos-15
+    steps:
+      - name: Скачать исходники
+        uses: actions/checkout@v4
+
+      - name: Установить XcodeGen
+        run: brew install xcodegen
+
+      - name: Найти проект и создать Xcode-проект
+        shell: bash
+        run: |
+          set -euo pipefail
+          PROJECT_FILE="$(find . -maxdepth 4 -name project.yml -type f | head -n 1)"
+          if [ -z "$PROJECT_FILE" ]; then
+            echo 'Не найден project.yml: загрузите распакованный проект в репозиторий.'
+            exit 1
+          fi
+          PROJECT_DIR="$(dirname "$PROJECT_FILE")"
+          echo "PROJECT_DIR=$PROJECT_DIR" >> "$GITHUB_ENV"
+          cd "$PROJECT_DIR"
+          xcodegen generate
+
+      - name: Собрать приложение без подписи
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd "$PROJECT_DIR"
+          xcodebuild \
+            -project NeonPulse.xcodeproj \
+            -scheme NeonPulse \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath "$RUNNER_TEMP/NeonPulseBuild" \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY='' \
+            clean build
+
+      - name: Упаковать IPA для ESign
+        shell: bash
+        run: |
+          set -euo pipefail
+          APP="$RUNNER_TEMP/NeonPulseBuild/Build/Products/Release-iphoneos/NeonPulse.app"
+          test -d "$APP"
+          mkdir -p "$RUNNER_TEMP/ipa/Payload"
+          cp -R "$APP" "$RUNNER_TEMP/ipa/Payload/"
+          cd "$RUNNER_TEMP/ipa"
+          zip -qry "$GITHUB_WORKSPACE/NeonPulse-unsigned.ipa" Payload
+
+      - name: Выдать IPA для скачивания
+        uses: actions/upload-artifact@v4
+        with:
+          name: NeonPulse-IPA
+          path: NeonPulse-unsigned.ipa
+          retention-days: 7
